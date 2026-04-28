@@ -1,1 +1,142 @@
-<!-- 나중에 채울 파일 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>MeetNow</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #0f0f1a; color: white; }
+    #join { display:flex; flex-direction:column; align-items:center;
+            justify-content:center; height:100vh; gap:12px; }
+    #join h2 { font-size: 24px; margin-bottom: 8px; }
+    #join input { padding:10px 16px; border-radius:8px; border:none;
+                  font-size:15px; width:260px; }
+    #join button { padding:10px 24px; border-radius:8px; border:none;
+                   background:#185FA5; color:white; font-size:15px; cursor:pointer; }
+    #join button:hover { background:#0C447C; }
+    #room { display:none; flex-direction:column; height:100vh; }
+    #videos { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+              gap:8px; flex:1; padding:12px; }
+    video { width:100%; border-radius:10px; background:#1a1a2e; }
+    #controls { display:flex; justify-content:center; gap:12px; padding:12px;
+                background:#1a1a2e; }
+    #controls button { padding:10px 20px; border-radius:8px; border:none;
+                       background:#333; color:white; cursor:pointer; font-size:14px; }
+    #controls button.off { background:#c0392b; }
+    #roomCode { font-size:13px; color:#aaa; text-align:center; padding:6px; }
+  </style>
+</head>
+<body>
+<div id="join">
+  <h2>MeetNow</h2>
+  <input id="nameInput" placeholder="이름 입력">
+  <input id="roomInput" placeholder="회의실 코드 (없으면 자동 생성)">
+  <button onclick="joinRoom()">참여하기</button>
+</div>
+
+<div id="room">
+  <div id="roomCode"></div>
+  <div id="videos"></div>
+  <div id="controls">
+    <button id="micBtn" onclick="toggleMic()">마이크 끄기</button>
+    <button id="camBtn" onclick="toggleCam()">카메라 끄기</button>
+    <button onclick="location.reload()" style="background:#555">나가기</button>
+  </div>
+</div>
+
+<script>
+const SERVER = 'https://meetnow-yi26.onrender.com';
+
+const ICE = { iceServers: [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' }
+]};
+
+let socket, localStream, peers = {}, micOn = true, camOn = true;
+
+async function joinRoom() {
+  const name = document.getElementById('nameInput').value || '익명';
+  const roomId = document.getElementById('roomInput').value ||
+                 Math.random().toString(36).substr(2,6).toUpperCase();
+
+  localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+  addVideo(localStream, '나 (' + name + ')', true);
+
+  socket = io(SERVER);
+  socket.emit('join-room', roomId);
+
+  document.getElementById('roomCode').textContent = '회의실 코드: ' + roomId + ' (상대방에게 이 코드를 알려주세요)';
+  document.getElementById('join').style.display = 'none';
+  document.getElementById('room').style.display = 'flex';
+  document.title = '회의실: ' + roomId;
+
+  socket.on('room-users', async users => {
+    for (const userId of users) await callUser(userId);
+  });
+  socket.on('user-joined', async userId => await callUser(userId));
+  socket.on('offer',  async ({from, offer})     => await handleOffer(from, offer));
+  socket.on('answer', async ({from, answer})    => await peers[from]?.setRemoteDescription(answer));
+  socket.on('ice',    async ({from, candidate}) => await peers[from]?.addIceCandidate(candidate));
+  socket.on('user-left', userId => {
+    peers[userId]?.close();
+    delete peers[userId];
+    document.getElementById('v-' + userId)?.remove();
+  });
+  socket.on('room-full', () => alert('방이 꽉 찼습니다 (최대 10명)'));
+}
+
+function createPeer(userId) {
+  const pc = new RTCPeerConnection(ICE);
+  peers[userId] = pc;
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  pc.ontrack = e => addVideo(e.streams[0], userId, false);
+  pc.onicecandidate = e => e.candidate && socket.emit('ice', { to: userId, candidate: e.candidate });
+  return pc;
+}
+
+async function callUser(userId) {
+  const pc = createPeer(userId);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  socket.emit('offer', { to: userId, offer });
+}
+
+async function handleOffer(from, offer) {
+  const pc = createPeer(from);
+  await pc.setRemoteDescription(offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  socket.emit('answer', { to: from, answer });
+}
+
+function addVideo(stream, label, isSelf) {
+  const wrap = document.createElement('div');
+  wrap.id = 'v-' + (isSelf ? 'self' : label);
+  wrap.style.cssText = 'position:relative';
+  const v = document.createElement('video');
+  v.srcObject = stream; v.autoplay = true; v.playsInline = true;
+  if (isSelf) v.muted = true;
+  const lbl = document.createElement('div');
+  lbl.textContent = label;
+  lbl.style.cssText = 'position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.6);padding:2px 8px;border-radius:4px;font-size:12px';
+  wrap.appendChild(v); wrap.appendChild(lbl);
+  document.getElementById('videos').appendChild(wrap);
+}
+
+function toggleMic() {
+  micOn = !micOn;
+  localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+  document.getElementById('micBtn').textContent = micOn ? '마이크 끄기' : '마이크 켜기';
+  document.getElementById('micBtn').classList.toggle('off', !micOn);
+}
+
+function toggleCam() {
+  camOn = !camOn;
+  localStream.getVideoTracks().forEach(t => t.enabled = camOn);
+  document.getElementById('camBtn').textContent = camOn ? '카메라 끄기' : '카메라 켜기';
+  document.getElementById('camBtn').classList.toggle('off', !camOn);
+}
+</script>
+</body>
+</html>
