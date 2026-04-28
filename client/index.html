@@ -2,50 +2,292 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MeetNow</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --accent: #2f81f7;
+      --accent-hover: #1f6feb;
+      --danger: #da3633;
+      --success: #3fb950;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --radius: 12px;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: sans-serif; background: #0f0f1a; color: white; }
-    #join { display:flex; flex-direction:column; align-items:center;
-            justify-content:center; height:100vh; gap:12px; }
-    #join h2 { font-size: 24px; margin-bottom: 8px; }
-    #join input { padding:10px 16px; border-radius:8px; border:none;
-                  font-size:15px; width:260px; }
-    #join button { padding:10px 24px; border-radius:8px; border:none;
-                   background:#185FA5; color:white; font-size:15px; cursor:pointer; }
-    #join button:hover { background:#0C447C; }
-    #room { display:none; flex-direction:column; height:100vh; }
-    #videos { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
-              gap:8px; flex:1; padding:12px; }
-    video { width:100%; border-radius:10px; background:#1a1a2e; }
-    #controls { display:flex; justify-content:center; gap:12px; padding:12px;
-                background:#1a1a2e; }
-    #controls button { padding:10px 20px; border-radius:8px; border:none;
-                       background:#333; color:white; cursor:pointer; font-size:14px; }
-    #controls button.off { background:#c0392b; }
-    #roomCode { font-size:13px; color:#aaa; text-align:center; padding:6px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+
+    /* 입장 화면 */
+    #join {
+      display: flex; align-items: center; justify-content: center;
+      height: 100vh; background: var(--bg);
+    }
+    .join-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 2.5rem; width: 380px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .join-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 8px;
+    }
+    .join-logo .icon {
+      width: 40px; height: 40px; background: var(--accent);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    }
+    .join-logo .icon svg { width: 22px; height: 22px; fill: white; }
+    .join-card label { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; display: block; }
+    .join-card input {
+      width: 100%; padding: 10px 14px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text); font-size: 14px; outline: none;
+      transition: border-color .2s;
+    }
+    .join-card input:focus { border-color: var(--accent); }
+    .join-card input::placeholder { color: var(--text-muted); }
+    .btn-primary {
+      width: 100%; padding: 11px; border-radius: 8px; border: none;
+      background: var(--accent); color: white; font-size: 15px;
+      font-weight: 600; cursor: pointer; transition: background .2s; margin-top: 4px;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .divider { display: flex; align-items: center; gap: 10px; }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+    .divider span { font-size: 12px; color: var(--text-muted); }
+
+    /* 회의 화면 */
+    #room { display: none; height: 100vh; flex-direction: row; }
+
+    /* 왼쪽: 비디오 영역 */
+    .video-area {
+      flex: 1; display: flex; flex-direction: column;
+      background: var(--bg); overflow: hidden;
+    }
+    .room-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .room-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+    .room-code-bar {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--text-muted);
+    }
+    .code-badge {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 3px 10px; font-family: monospace;
+      font-size: 13px; color: var(--text); letter-spacing: 1px;
+    }
+    .copy-btn {
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      padding: 3px 8px; color: var(--text-muted); font-size: 12px;
+      cursor: pointer; transition: all .2s;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    #videos {
+      flex: 1; display: grid; gap: 8px; padding: 12px;
+      align-content: start; overflow-y: auto;
+    }
+    .video-wrap {
+      position: relative; border-radius: var(--radius);
+      overflow: hidden; background: var(--surface2);
+      aspect-ratio: 16/9;
+    }
+    .video-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .video-label {
+      position: absolute; bottom: 8px; left: 8px;
+      background: rgba(0,0,0,0.65); padding: 3px 10px;
+      border-radius: 6px; font-size: 12px; font-weight: 500;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .muted-icon { color: var(--danger); font-size: 11px; }
+    .self-border { border: 2px solid var(--accent); }
+
+    /* 컨트롤 바 */
+    .controls {
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px; padding: 14px 16px;
+      background: var(--surface); border-top: 1px solid var(--border);
+    }
+    .ctrl-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .ctrl-btn {
+      width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all .2s; font-size: 18px;
+    }
+    .ctrl-btn:hover { background: var(--border); }
+    .ctrl-btn.off { background: var(--danger); border-color: var(--danger); }
+    .ctrl-btn.leave { background: var(--danger); border-color: var(--danger); }
+    .ctrl-btn.leave:hover { background: #b91c1c; }
+    .ctrl-label { font-size: 10px; color: var(--text-muted); }
+
+    /* 오른쪽: 사이드바 */
+    .sidebar {
+      width: 280px; background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+    }
+    .sidebar-tabs {
+      display: flex; border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      flex: 1; padding: 12px; background: none; border: none;
+      color: var(--text-muted); font-size: 13px; cursor: pointer;
+      border-bottom: 2px solid transparent; transition: all .2s;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-panel.active { display: flex; }
+
+    /* 참여자 탭 */
+    .participant-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .participant-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 8px;
+      transition: background .15s;
+    }
+    .participant-item:hover { background: var(--surface2); }
+    .p-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600; color: white; flex-shrink: 0;
+    }
+    .p-name { font-size: 13px; flex: 1; }
+    .p-icons { font-size: 12px; display: flex; gap: 4px; }
+
+    /* 채팅 탭 */
+    .chat-messages {
+      flex: 1; overflow-y: auto; padding: 12px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .chat-msg { display: flex; flex-direction: column; gap: 2px; }
+    .chat-sender { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+    .chat-sender.me { color: var(--accent); }
+    .chat-bubble {
+      font-size: 13px; color: var(--text); line-height: 1.5;
+      background: var(--surface2); padding: 7px 10px;
+      border-radius: 8px; max-width: 220px; word-break: break-word;
+    }
+    .chat-bubble.me { background: #1f3a5f; align-self: flex-end; }
+    .chat-msg.me { align-items: flex-end; }
+    .sys-msg {
+      font-size: 11px; color: var(--text-muted);
+      text-align: center; font-style: italic;
+    }
+    .chat-input-row {
+      display: flex; gap: 6px; padding: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .chat-input-row input {
+      flex: 1; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text); font-size: 13px; outline: none;
+    }
+    .chat-input-row input:focus { border-color: var(--accent); }
+    .send-btn {
+      padding: 8px 12px; border-radius: 8px; border: none;
+      background: var(--accent); color: white; font-size: 13px;
+      cursor: pointer; font-weight: 600;
+    }
+    .send-btn:hover { background: var(--accent-hover); }
+
+    /* 스크롤바 */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   </style>
 </head>
 <body>
+
+<!-- 입장 화면 -->
 <div id="join">
-  <h2>MeetNow</h2>
-  <input id="nameInput" placeholder="이름 입력">
-  <input id="roomInput" placeholder="회의실 코드 (없으면 자동 생성)">
-  <button onclick="joinRoom()">참여하기</button>
+  <div class="join-card">
+    <div class="join-logo">
+      <div class="icon">
+        <svg viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>
+      </div>
+      MeetNow
+    </div>
+    <div>
+      <label>이름</label>
+      <input id="nameInput" placeholder="참여자 이름을 입력하세요">
+    </div>
+    <div class="divider"><span>새 회의 또는 기존 회의 참여</span></div>
+    <div>
+      <label>회의실 코드 <span style="color:var(--text-muted);font-size:11px">(없으면 자동 생성)</span></label>
+      <input id="roomInput" placeholder="코드 입력 또는 비워두기">
+    </div>
+    <button class="btn-primary" onclick="joinRoom()">참여하기</button>
+  </div>
 </div>
 
+<!-- 회의 화면 -->
 <div id="room">
-  <div id="roomCode"></div>
-  <div id="videos"></div>
-  <div id="controls">
-    <button id="micBtn" onclick="toggleMic()">마이크 끄기</button>
-    <button id="camBtn" onclick="toggleCam()">카메라 끄기</button>
-    <button onclick="location.reload()" style="background:#555">나가기</button>
+  <div class="video-area">
+    <div class="room-header">
+      <div class="room-title">
+        <div class="live-dot"></div>
+        MeetNow
+      </div>
+      <div class="room-code-bar">
+        <span>코드:</span>
+        <span class="code-badge" id="codeDisplay">—</span>
+        <button class="copy-btn" onclick="copyCode()">복사</button>
+      </div>
+    </div>
+    <div id="videos"></div>
+    <div class="controls">
+      <div class="ctrl-wrap">
+        <div class="ctrl-btn" id="micBtn" onclick="toggleMic()" title="마이크">🎤</div>
+        <span class="ctrl-label">마이크</span>
+      </div>
+      <div class="ctrl-wrap">
+        <div class="ctrl-btn" id="camBtn" onclick="toggleCam()" title="카메라">📷</div>
+        <span class="ctrl-label">카메라</span>
+      </div>
+      <div class="ctrl-wrap">
+        <div class="ctrl-btn" id="screenBtn" onclick="toggleScreen()" title="화면공유">🖥️</div>
+        <span class="ctrl-label">화면공유</span>
+      </div>
+      <div class="ctrl-wrap">
+        <div class="ctrl-btn leave" onclick="leaveRoom()" title="나가기">📞</div>
+        <span class="ctrl-label" style="color:var(--danger)">나가기</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-tabs">
+      <button class="tab-btn active" onclick="switchTab('participants')">참여자 <span id="pCount"></span></button>
+      <button class="tab-btn" onclick="switchTab('chat')">채팅 <span id="unreadBadge" style="color:var(--danger)"></span></button>
+    </div>
+    <div class="tab-panel active" id="tab-participants">
+      <div class="participant-list" id="participantList"></div>
+    </div>
+    <div class="tab-panel" id="tab-chat">
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-row">
+        <input id="chatInput" placeholder="메시지 입력..." onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="send-btn" onclick="sendChat()">전송</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
+// ★ Render 서버 주소 ★
 const SERVER = 'https://meetnow-yi26.onrender.com';
 
 const ICE = { iceServers: [
@@ -53,44 +295,71 @@ const ICE = { iceServers: [
   { urls: 'stun:stun1.l.google.com:19302' }
 ]};
 
-let socket, localStream, peers = {}, micOn = true, camOn = true;
+const COLORS = ['#2f81f7','#3fb950','#f78166','#d2a8ff','#ffa657','#79c0ff'];
+let socket, localStream, screenStream, peers = {};
+let micOn = true, camOn = true, screenOn = false;
+let myName = '', myRoomId = '', unread = 0, activeTab = 'participants';
+let participants = {};
 
 async function joinRoom() {
-  const name = document.getElementById('nameInput').value || '익명';
-  const roomId = document.getElementById('roomInput').value ||
-                 Math.random().toString(36).substr(2,6).toUpperCase();
+  myName = document.getElementById('nameInput').value.trim() || '익명';
+  myRoomId = document.getElementById('roomInput').value.trim().toUpperCase() ||
+             Math.random().toString(36).substr(2,6).toUpperCase();
 
-  localStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-  addVideo(localStream, '나 (' + name + ')', true);
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  } catch(e) {
+    alert('카메라/마이크 접근을 허용해 주세요.');
+    return;
+  }
 
-  socket = io(SERVER);
-  socket.emit('join-room', roomId);
+  addVideo(localStream, 'me', myName + ' (나)', true);
+  participants['me'] = { name: myName, micOn: true, camOn: true, color: COLORS[0] };
 
-  document.getElementById('roomCode').textContent = '회의실 코드: ' + roomId + ' (상대방에게 이 코드를 알려주세요)';
   document.getElementById('join').style.display = 'none';
   document.getElementById('room').style.display = 'flex';
-  document.title = '회의실: ' + roomId;
+  document.getElementById('codeDisplay').textContent = myRoomId;
+  document.title = '회의실: ' + myRoomId;
+
+  socket = io(SERVER);
+  socket.emit('join-room', myRoomId);
 
   socket.on('room-users', async users => {
+    addSysMsg('회의에 참여했습니다. 현재 ' + (users.length + 1) + '명');
     for (const userId of users) await callUser(userId);
   });
-  socket.on('user-joined', async userId => await callUser(userId));
-  socket.on('offer',  async ({from, offer})     => await handleOffer(from, offer));
-  socket.on('answer', async ({from, answer})    => await peers[from]?.setRemoteDescription(answer));
-  socket.on('ice',    async ({from, candidate}) => await peers[from]?.addIceCandidate(candidate));
+  socket.on('user-joined', async userId => {
+    addSysMsg('새 참여자가 입장했습니다.');
+    await callUser(userId);
+  });
+  socket.on('offer',  async ({from, offer, name})  => await handleOffer(from, offer, name));
+  socket.on('answer', async ({from, answer})        => await peers[from]?.setRemoteDescription(answer));
+  socket.on('ice',    async ({from, candidate})     => await peers[from]?.addIceCandidate(candidate));
   socket.on('user-left', userId => {
-    peers[userId]?.close();
-    delete peers[userId];
+    peers[userId]?.close(); delete peers[userId];
     document.getElementById('v-' + userId)?.remove();
+    const name = participants[userId]?.name || '참여자';
+    delete participants[userId];
+    renderParticipants();
+    addSysMsg(name + '님이 퇴장했습니다.');
+  });
+  socket.on('chat-message', ({name, text}) => {
+    addChatMsg(name, text, false);
+    if (activeTab !== 'chat') { unread++; document.getElementById('unreadBadge').textContent = '●'; }
   });
   socket.on('room-full', () => alert('방이 꽉 찼습니다 (최대 10명)'));
+
+  renderParticipants();
+  addSysMsg('회의실 코드: ' + myRoomId + ' — 상대방에게 이 코드를 알려주세요.');
 }
 
 function createPeer(userId) {
   const pc = new RTCPeerConnection(ICE);
   peers[userId] = pc;
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-  pc.ontrack = e => addVideo(e.streams[0], userId, false);
+  pc.ontrack = e => {
+    addVideo(e.streams[0], userId, participants[userId]?.name || '참여자', false);
+  };
   pc.onicecandidate = e => e.candidate && socket.emit('ice', { to: userId, candidate: e.candidate });
   return pc;
 }
@@ -99,10 +368,12 @@ async function callUser(userId) {
   const pc = createPeer(userId);
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  socket.emit('offer', { to: userId, offer });
+  socket.emit('offer', { to: userId, offer, name: myName });
 }
 
-async function handleOffer(from, offer) {
+async function handleOffer(from, offer, name) {
+  participants[from] = { name: name || '참여자', color: COLORS[Object.keys(participants).length % COLORS.length] };
+  renderParticipants();
   const pc = createPeer(from);
   await pc.setRemoteDescription(offer);
   const answer = await pc.createAnswer();
@@ -110,32 +381,141 @@ async function handleOffer(from, offer) {
   socket.emit('answer', { to: from, answer });
 }
 
-function addVideo(stream, label, isSelf) {
+function addVideo(stream, id, label, isSelf) {
+  if (document.getElementById('v-' + id)) return;
+  const grid = document.getElementById('videos');
+  const cnt = grid.children.length + 1;
+  grid.style.gridTemplateColumns = cnt <= 1 ? '1fr' : cnt <= 4 ? 'repeat(2,1fr)' : 'repeat(3,1fr)';
+
   const wrap = document.createElement('div');
-  wrap.id = 'v-' + (isSelf ? 'self' : label);
-  wrap.style.cssText = 'position:relative';
+  wrap.className = 'video-wrap' + (isSelf ? ' self-border' : '');
+  wrap.id = 'v-' + id;
+
   const v = document.createElement('video');
   v.srcObject = stream; v.autoplay = true; v.playsInline = true;
   if (isSelf) v.muted = true;
+
   const lbl = document.createElement('div');
-  lbl.textContent = label;
-  lbl.style.cssText = 'position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.6);padding:2px 8px;border-radius:4px;font-size:12px';
+  lbl.className = 'video-label';
+  lbl.id = 'lbl-' + id;
+  lbl.innerHTML = '<span>' + label + '</span>';
+
   wrap.appendChild(v); wrap.appendChild(lbl);
-  document.getElementById('videos').appendChild(wrap);
+  grid.appendChild(wrap);
+}
+
+function renderParticipants() {
+  const list = document.getElementById('participantList');
+  const count = Object.keys(participants).length;
+  document.getElementById('pCount').textContent = '(' + count + ')';
+  list.innerHTML = '';
+  Object.entries(participants).forEach(([id, p], i) => {
+    const item = document.createElement('div');
+    item.className = 'participant-item';
+    item.innerHTML = `
+      <div class="p-avatar" style="background:${p.color}">${p.name.slice(0,1)}</div>
+      <div class="p-name">${id === 'me' ? p.name + ' (나)' : p.name}</div>
+      <div class="p-icons">
+        ${p.micOn === false ? '<span title="마이크 꺼짐">🔇</span>' : '<span title="마이크 켜짐">🎤</span>'}
+        ${p.camOn === false ? '<span title="카메라 꺼짐">📷</span>' : ''}
+      </div>`;
+    list.appendChild(item);
+  });
 }
 
 function toggleMic() {
   micOn = !micOn;
   localStream.getAudioTracks().forEach(t => t.enabled = micOn);
-  document.getElementById('micBtn').textContent = micOn ? '마이크 끄기' : '마이크 켜기';
+  document.getElementById('micBtn').textContent = micOn ? '🎤' : '🔇';
   document.getElementById('micBtn').classList.toggle('off', !micOn);
+  participants['me'].micOn = micOn;
+  renderParticipants();
 }
 
 function toggleCam() {
   camOn = !camOn;
   localStream.getVideoTracks().forEach(t => t.enabled = camOn);
-  document.getElementById('camBtn').textContent = camOn ? '카메라 끄기' : '카메라 켜기';
+  document.getElementById('camBtn').textContent = camOn ? '📷' : '🚫';
   document.getElementById('camBtn').classList.toggle('off', !camOn);
+  participants['me'].camOn = camOn;
+  renderParticipants();
+}
+
+async function toggleScreen() {
+  if (!screenOn) {
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = screenStream.getVideoTracks()[0];
+      Object.values(peers).forEach(pc => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) sender.replaceTrack(screenTrack);
+      });
+      screenTrack.onended = () => { screenOn = true; toggleScreen(); };
+      screenOn = true;
+      document.getElementById('screenBtn').classList.add('off');
+      addSysMsg('화면 공유를 시작했습니다.');
+    } catch(e) { return; }
+  } else {
+    const videoTrack = localStream.getVideoTracks()[0];
+    Object.values(peers).forEach(pc => {
+      const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+      if (sender) sender.replaceTrack(videoTrack);
+    });
+    screenStream?.getTracks().forEach(t => t.stop());
+    screenOn = false;
+    document.getElementById('screenBtn').classList.remove('off');
+    addSysMsg('화면 공유를 종료했습니다.');
+  }
+}
+
+function copyCode() {
+  navigator.clipboard?.writeText(myRoomId).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = '완료!';
+    setTimeout(() => btn.textContent = '복사', 1500);
+  });
+}
+
+function leaveRoom() {
+  socket?.disconnect();
+  localStream?.getTracks().forEach(t => t.stop());
+  location.reload();
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', ['participants','chat'][i] === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'chat') { unread = 0; document.getElementById('unreadBadge').textContent = ''; }
+}
+
+function addChatMsg(sender, text, isMe) {
+  const box = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg' + (isMe ? ' me' : '');
+  div.innerHTML = `<div class="chat-sender${isMe?' me':''}">${sender}</div>
+                   <div class="chat-bubble${isMe?' me':''}">${text}</div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function addSysMsg(text) {
+  const box = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'sys-msg';
+  div.textContent = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function sendChat() {
+  const inp = document.getElementById('chatInput');
+  const text = inp.value.trim();
+  if (!text || !socket) return;
+  socket.emit('chat-message', { roomId: myRoomId, name: myName, text });
+  addChatMsg(myName, text, true);
+  inp.value = '';
 }
 </script>
 </body>

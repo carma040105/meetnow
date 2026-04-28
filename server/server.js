@@ -5,7 +5,6 @@ const cors = require('cors');
 
 const app = express();
 app.use(cors());
-
 app.get('/health', (req, res) => res.send('OK'));
 
 const server = http.createServer(app);
@@ -16,27 +15,25 @@ const io = new Server(server, {
 const rooms = {};
 
 io.on('connection', socket => {
-  console.log('접속:', socket.id);
-
   socket.on('join-room', roomId => {
     if (!rooms[roomId]) rooms[roomId] = [];
-    if (rooms[roomId].length >= 10) {
-      socket.emit('room-full');
-      return;
-    }
+    if (rooms[roomId].length >= 10) { socket.emit('room-full'); return; }
     rooms[roomId].push(socket.id);
     socket.join(roomId);
     socket.roomId = roomId;
-
     const others = rooms[roomId].filter(id => id !== socket.id);
     socket.emit('room-users', others);
     socket.to(roomId).emit('user-joined', socket.id);
-    console.log(`방 ${roomId}: ${rooms[roomId].length}명`);
   });
 
-  socket.on('offer',  ({to, offer})     => io.to(to).emit('offer',  {from: socket.id, offer}));
-  socket.on('answer', ({to, answer})    => io.to(to).emit('answer', {from: socket.id, answer}));
-  socket.on('ice',    ({to, candidate}) => io.to(to).emit('ice',    {from: socket.id, candidate}));
+  socket.on('offer',  ({to, offer, name})  => io.to(to).emit('offer',  {from: socket.id, offer, name}));
+  socket.on('answer', ({to, answer})       => io.to(to).emit('answer', {from: socket.id, answer}));
+  socket.on('ice',    ({to, candidate})    => io.to(to).emit('ice',    {from: socket.id, candidate}));
+
+  // 채팅 메시지 중계
+  socket.on('chat-message', ({roomId, name, text}) => {
+    socket.to(roomId).emit('chat-message', {name, text});
+  });
 
   socket.on('disconnect', () => {
     if (socket.roomId && rooms[socket.roomId]) {
